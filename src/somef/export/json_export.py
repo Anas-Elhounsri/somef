@@ -32,7 +32,7 @@ def save_json_output(repo_data, out_path, missing, pretty=False):
             json.dump(repo_data, output)
 
 
-def save_codemeta_output(repo_data, outfile, pretty=False):
+def save_codemeta_output(repo_data, outfile, pretty=False, requirements_mode='all'):
     """
     Function that saves a Codemeta JSONLD file with a summary of the results
 
@@ -41,6 +41,7 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
     @param repo_data: JSON with the results to translate to Codemeta
     @param outfile: path where to save the codemeta file
     @param pretty: option to show the JSON results in a nice format
+    @param requriments_mode: option to show all requriments or just machine readable
     """
     def format_date(date_string):
         date_object = date_parser.parse(date_string)
@@ -77,9 +78,40 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
 
     descriptions_text = []
     if descriptions is not None:
-        descriptions.sort(key=lambda x: (x[constants.PROP_CONFIDENCE] + (1 if x[constants.PROP_TECHNIQUE] == constants.GITHUB_API else 0)),
-                          reverse=True)
-        descriptions_text = [x[constants.PROP_RESULT][constants.PROP_VALUE] for x in descriptions]
+
+        # priority descriptions: Codemeta, without codemeta but confidence 1, rest
+        codemeta_desc = [d for d in descriptions if d.get("technique") == "code_parser" and "codemeta.json" in d.get("source", "")]
+        github_desc = [d for d in descriptions if d.get("technique") == constants.GITHUB_API]
+        readme_desc = [d for d in descriptions if d.get("technique") not in ("code_parser", constants.GITHUB_API)]
+
+        if codemeta_desc:
+            # If codemeta just these
+            selected = codemeta_desc
+        elif github_desc:
+            # whitout codemeta, but we have descripciont with confidence 1
+            threshold_1 = [d for d in github_desc if d.get("confidence", 0) == 1]
+            selected = threshold_1 if threshold_1 else github_desc
+        else:
+            # Rest of descriptions 
+            selected = sorted(readme_desc, key=lambda x: x.get("confidence", 0), reverse=True)[:1]
+
+        flat_descriptions = []
+        for d in selected:
+            value = d[constants.PROP_RESULT][constants.PROP_VALUE]
+            if isinstance(value, list):
+                for v in value:
+                    if v not in flat_descriptions:
+                        flat_descriptions.append(v)
+            else:
+                if value not in flat_descriptions:
+                    flat_descriptions.append(value)
+
+        descriptions_text = flat_descriptions
+
+        # descriptions_text = [d[constants.PROP_RESULT][constants.PROP_VALUE] for d in selected]
+        # descriptions.sort(key=lambda x: (x[constants.PROP_CONFIDENCE] + (1 if x[constants.PROP_TECHNIQUE] == constants.GITHUB_API else 0)),
+        #                   reverse=True)
+        # descriptions_text = [x[constants.PROP_RESULT][constants.PROP_VALUE] for x in descriptions]
 
 
     codemeta_output = {
@@ -124,25 +156,29 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
                 l_result["identifier"] = constants.SPDX_BASE + l[constants.PROP_RESULT][constants.PROP_SPDX_ID]
                 l_result["spdx_id"] = l[constants.PROP_RESULT][constants.PROP_SPDX_ID]
 
-        codemeta_output["license"] = l_result
+        codemeta_output[constants.CAT_CODEMETA_LICENSE] = l_result
     if code_repository is not None:
-        codemeta_output["codeRepository"] = code_repository
-        codemeta_output["issueTracker"] = code_repository + "/issues"
+        codemeta_output[constants.CAT_CODEMETA_CODEREPOSITORY] = code_repository
+        codemeta_output[constants.CAT_CODEMETA_ISSUETRACKER] = code_repository + "/issues"
     if constants.CAT_DATE_CREATED in repo_data:
-        codemeta_output["dateCreated"] = format_date(repo_data[constants.CAT_DATE_CREATED][0][constants.PROP_RESULT][constants.PROP_VALUE])
+        value = repo_data[constants.CAT_DATE_CREATED][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        if value:
+            codemeta_output[constants.CAT_CODEMETA_DATECREATED] = format_date(value)
     if constants.CAT_DATE_UPDATED in repo_data:
-        codemeta_output["dateModified"] = format_date(repo_data[constants.CAT_DATE_UPDATED][0][constants.PROP_RESULT][constants.PROP_VALUE])
+        value = repo_data[constants.CAT_DATE_UPDATED][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        if value:
+            codemeta_output[constants.CAT_CODEMETA_DATEMODIFIED] = format_date(value)
     if constants.CAT_DOWNLOAD_URL in repo_data:
-        codemeta_output["downloadUrl"] = repo_data[constants.CAT_DOWNLOAD_URL][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        codemeta_output[constants.CAT_CODEMETA_DOWNLOADURL] = repo_data[constants.CAT_DOWNLOAD_URL][0][constants.PROP_RESULT][constants.PROP_VALUE]
     if constants.CAT_NAME in repo_data:
-        codemeta_output["name"] = repo_data[constants.CAT_NAME][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        codemeta_output[constants.CAT_CODEMETA_NAME] = repo_data[constants.CAT_NAME][0][constants.PROP_RESULT][constants.PROP_VALUE]
     if constants.CAT_LOGO in repo_data:
-        codemeta_output["logo"] = repo_data[constants.CAT_LOGO][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        codemeta_output[constants.CAT_CODEMETA_LOGO] = repo_data[constants.CAT_LOGO][0][constants.PROP_RESULT][constants.PROP_VALUE]
     if constants.CAT_KEYWORDS in repo_data:
-        codemeta_output["keywords"] = repo_data[constants.CAT_KEYWORDS][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        codemeta_output[constants.CAT_CODEMETA_KEYWORDS] = repo_data[constants.CAT_KEYWORDS][0][constants.PROP_RESULT][constants.PROP_VALUE]
     if constants.CAT_PROGRAMMING_LANGUAGES in repo_data:
         # Calculate the total code size of all the programming languages
-        codemeta_output["programmingLanguage"] = []
+        codemeta_output[constants.CAT_CODEMETA_PROGRAMMINGLANGUAGE] = []
         language_data = repo_data.get(constants.CAT_PROGRAMMING_LANGUAGES, [])
         total_size = 0
         for item in language_data:
@@ -155,38 +191,54 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
             result = item.get(constants.PROP_RESULT, {})
             size = result.get(constants.PROP_SIZE)
             value = result.get(constants.PROP_VALUE)
-            if value not in codemeta_output["programmingLanguage"]:
+            if value not in codemeta_output[constants.CAT_CODEMETA_PROGRAMMINGLANGUAGE]:
                 if size is not None and value is not None and total_size > 0:
                     percentage = (size / total_size) * 100
                     if percentage > constants.MINIMUM_PERCENTAGE_LANGUAGE_PROGRAMMING:
-                        codemeta_output["programmingLanguage"].append(value)
+                        codemeta_output[constants.CAT_CODEMETA_PROGRAMMINGLANGUAGE].append(value)
                 elif size is None: # when size is not available, it comes from the parsers
-                    codemeta_output["programmingLanguage"].append(value)
+                    codemeta_output[constants.CAT_CODEMETA_PROGRAMMINGLANGUAGE].append(value)
 
     if constants.CAT_REQUIREMENTS in repo_data:
-        # codemeta_output["softwareRequirements"] = [x[constants.PROP_RESULT][constants.PROP_VALUE] for x in repo_data[constants.CAT_REQUIREMENTS]]
-        code_parser_requirements = [
-        {
-            "name": x[constants.PROP_RESULT].get(constants.PROP_NAME)
-            if x[constants.PROP_RESULT].get(constants.PROP_NAME) 
-            else x[constants.PROP_RESULT].get(constants.PROP_VALUE),
-            "version": x[constants.PROP_RESULT].get(constants.PROP_VERSION)
-        }
-        for x in repo_data[constants.CAT_REQUIREMENTS]
-        if x.get(constants.PROP_TECHNIQUE) == constants.TECHNIQUE_CODE_CONFIG_PARSER
-        ]
+        structured_sources = ["pom.xml", "requirements.txt", "setup.py", "environment.yml"]
 
-        other_requirements = [
-        x[constants.PROP_RESULT][constants.PROP_VALUE]
-        for x in repo_data[constants.CAT_REQUIREMENTS]
-        if x.get(constants.PROP_TECHNIQUE) != constants.TECHNIQUE_CODE_CONFIG_PARSER
-        ]
- 
-        codemeta_output["softwareRequirements"] = (
-            code_parser_requirements if code_parser_requirements  else other_requirements
-        )
+        code_parser_requirements = []
+        seen_structured = set()
+        for x in repo_data[constants.CAT_REQUIREMENTS]:
+            if x.get(constants.PROP_TECHNIQUE) == constants.TECHNIQUE_CODE_CONFIG_PARSER:
+                source = x.get("source", "")
+                if any(src in source for src in structured_sources):
+                    name = x[constants.PROP_RESULT].get(constants.PROP_NAME) or x[constants.PROP_RESULT].get(constants.PROP_VALUE)
+                    version = x[constants.PROP_RESULT].get(constants.PROP_VERSION)
+                    key = f"{name.strip()}|{version.strip() if version else ''}"
+                    if key not in seen_structured:
+                        entry = {"name": name.strip()}
+                        if version:
+                            entry["version"] = version.strip()
+                        code_parser_requirements.append(entry)
+                        seen_structured.add(key)
+
+        other_requirements = []
+        seen_text = set()
+        for x in repo_data[constants.CAT_REQUIREMENTS]:
+            if not (
+                x.get(constants.PROP_TECHNIQUE) == constants.TECHNIQUE_CODE_CONFIG_PARSER
+                and x.get("source") is not None
+                and any(src in x["source"] for src in structured_sources)
+            ):
+                value = x[constants.PROP_RESULT].get(constants.PROP_VALUE, "").strip().replace("\n", " ")
+                normalized = " ".join(value.split())
+                if normalized not in seen_text:
+                    other_requirements.append(value)
+                    seen_text.add(normalized)
+
+        if requirements_mode == "v":
+            codemeta_output[constants.CAT_CODEMETA_SOFTWAREREQUIREMENTS] = code_parser_requirements
+        else:
+            codemeta_output[constants.CAT_CODEMETA_SOFTWAREREQUIREMENTS] = code_parser_requirements + other_requirements
+
     if constants.CAT_CONTINUOUS_INTEGRATION in repo_data:
-        codemeta_output["continuousIntegration"] = repo_data[constants.CAT_CONTINUOUS_INTEGRATION][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        codemeta_output[constants.CAT_CODEMETA_CONTINUOUSINTEGRATION] = repo_data[constants.CAT_CONTINUOUS_INTEGRATION][0][constants.PROP_RESULT][constants.PROP_VALUE]
     # if constants.CAT_WORKFLOWS in repo_data:
     #     codemeta_output["workflows"] = repo_data[constants.CAT_WORKFLOWS][0][constants.PROP_RESULT][constants.PROP_VALUE] 
     if constants.CAT_RELEASES in repo_data:
@@ -213,11 +265,11 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
                     oldest_version = l[constants.PROP_RESULT].get(constants.PROP_TAG)
 
         if latest_description is not None:
-            codemeta_output["releaseNotes"] = latest_description
+            codemeta_output[constants.CAT_CODEMETA_RELEASENOTES] = latest_description
         if latest_version is not None:
-            codemeta_output["softwareVersion"] = latest_version
+            codemeta_output[constants.CAT_CODEMETA_SOFTWAREVERSION] = latest_version
         if oldest_date is not None:
-            codemeta_output["datePublished"] = format_date(oldest_date.isoformat())
+            codemeta_output[constants.CAT_CODEMETA_DATEPUBLISHED] = format_date(oldest_date.isoformat())
 
     install_links = []
     if constants.CAT_INSTALLATION in repo_data:
@@ -238,13 +290,13 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
     if len(install_links) > 0:
         # remove duplicates and generate codemeta
         install_links = list(set(install_links))
-        codemeta_output["buildInstructions"] = install_links
+        codemeta_output[constants.CAT_CODEMETA_BUILDINSTRUCTIONS] = install_links
     if constants.CAT_OWNER in repo_data:
         # if user then person, otherwise organization
         type_aux = repo_data[constants.CAT_OWNER][0][constants.PROP_RESULT][constants.PROP_TYPE]
         if type_aux == "User":
             type_aux = "Person"
-        codemeta_output["author"] = [
+        codemeta_output[constants.CAT_CODEMETA_AUTHOR] = [
             {
                 "@type": type_aux,
                 "@id": "https://github.com/" + author_name
@@ -252,7 +304,7 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
         ]
     if constants.CAT_AUTHORS in repo_data:
         if "author" not in codemeta_output:
-            codemeta_output["author"] = []
+            codemeta_output[constants.CAT_CODEMETA_AUTHOR] = []
 
         for author in repo_data[constants.CAT_AUTHORS]:
             value_author = author[constants.PROP_RESULT].get(constants.PROP_VALUE)
@@ -285,11 +337,11 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
 
                 author_l['name'] = name_author
 
-            codemeta_output["author"].append(author_l)
+            codemeta_output[constants.CAT_CODEMETA_AUTHOR].append(author_l)
 
     if constants.CAT_CITATION in repo_data:
         # url_cit = []
-        codemeta_output["referencePublication"] = []
+        codemeta_output[constants.CAT_CODEMETA_REFERENCEPUBLICATION] = []
         all_reference_publications = []
         # scholarlyArticles = {}
         author_orcids = {}
@@ -307,7 +359,6 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
                 doi = yaml_content.get("doi") or preferred_citation.get("doi")
                 identifiers = yaml_content.get("identifiers", [])
                 url_citation = preferred_citation.get("url") or yaml_content.get("url")
-
                 identifier_url = next((id["value"] for id in identifiers if id["type"] == "url"), None)
                 identifier_doi = next((id["value"] for id in identifiers if id["type"] == "doi"), None)
 
@@ -404,61 +455,66 @@ def save_codemeta_output(repo_data, outfile, pretty=False):
 
                     if key and key in author_orcids:
                         author["@id"] = author_orcids[key]  
-
-        codemeta_output["referencePublication"] = deduplicate_publications(all_reference_publications)
-                # key = (doi, title)
-
-                # if key in scholarlyArticles:
-                #     if is_bibtex:
-                #         codemeta_output["referencePublication"].remove(scholarlyArticles[key])
-                #         codemeta_output["referencePublication"].append(scholarlyArticle)
-                #         scholarlyArticles[key] = scholarlyArticle
-                # else:
-                #     codemeta_output["referencePublication"].append(scholarlyArticle)
-                #     scholarlyArticles[key] = scholarlyArticle
-            
+     
+        codemeta_output[constants.CAT_CODEMETA_REFERENCEPUBLICATION] = deduplicate_publications(all_reference_publications)
 
     if constants.CAT_STATUS in repo_data:
         url_status = repo_data[constants.CAT_STATUS][0]['result'].get('value', '')
         status = url_status.split('#')[-1] if '#' in url_status else None
         if status:
-            codemeta_output["developmentStatus"] = status
+            codemeta_output[constants.CAT_CODEMETA_DEVELOPMENTSTATUS] = status
 
     if constants.CAT_IDENTIFIER in repo_data:
-        codemeta_output["identifier"] = []
+        codemeta_output[constants.CAT_CODEMETA_IDENTIFIER] = []
+
         for identifier in repo_data[constants.CAT_IDENTIFIER]:
-          codemeta_output["identifier"].append(identifier[constants.PROP_RESULT][constants.PROP_VALUE]) 
+          value = identifier[constants.PROP_RESULT][constants.PROP_VALUE]
+          if value not in codemeta_output[constants.CAT_CODEMETA_IDENTIFIER]:
+            codemeta_output[constants.CAT_CODEMETA_IDENTIFIER].append(value)
 
     if constants.CAT_HOMEPAGE in repo_data:
-        homepage_urls = set()
-        for homepage_entry in repo_data[constants.CAT_HOMEPAGE]:
-            url = homepage_entry[constants.PROP_RESULT][constants.PROP_VALUE]
-            homepage_urls.add(url.strip()) 
 
+        # example 
+        # homepage_urls = {"http://foo.com", "https://foo.com", "http://bar.com"}
+        # Result-->  filtered_urls = {"https://foo.com", "http://bar.com"}
+        # Prioritize https
+
+        homepage_urls = {hp[constants.PROP_RESULT][constants.PROP_VALUE].strip()
+                 for hp in repo_data[constants.CAT_HOMEPAGE]}
+        
         filtered_urls = set()
-        https_roots = {url.replace("https://", "") for url in homepage_urls if url.startswith("https://")}
+        roots_with_https = {url[len("https://"):] for url in homepage_urls if url.startswith("https://")}
 
         for url in homepage_urls:
             root = url.replace("http://", "").replace("https://", "")
-            if root in https_roots:
-                continue  
+            if url.startswith("http://") and root in roots_with_https:
+                continue
             filtered_urls.add(url)
 
-        for url in homepage_urls:
-            if url.startswith("https://"):
-                filtered_urls.add(url)
-
-        codemeta_output["url"] = list(filtered_urls)
+        codemeta_output[constants.CAT_CODEMETA_URL] = list(filtered_urls)
 
     #     codemeta_output["identifier"] = repo_data[constants.CAT_IDENTIFIER][0][constants.PROP_RESULT][constants.PROP_VALUE]
     if constants.CAT_README_URL in repo_data:
-        codemeta_output["readme"] = repo_data[constants.CAT_README_URL][0][constants.PROP_RESULT][constants.PROP_VALUE]
+        codemeta_output[constants.CAT_CODEMETA_README] = repo_data[constants.CAT_README_URL][0][constants.PROP_RESULT][constants.PROP_VALUE]
     
+    if constants.CAT_RUNTIME_PLATFORM in repo_data:
+        runtimes = []
+ 
+        for runtime_entry in repo_data[constants.CAT_RUNTIME_PLATFORM]:
+            result = runtime_entry.get("result", {})
+            name = result.get("name")
+            version = result.get("value")
+            if name and value:
+                runtimes.append(f"{name} {version}")
+
+        if runtimes:
+            codemeta_output[constants.CAT_CODEMETA_RUNTIMEPLATFORM] = ", ".join(runtimes)
+
     # if "contributors" in repo_data:
     #     codemeta_output["contributor"] = data_path(["contributors", "excerpt"])
     # A person is expected, and we extract text at the moment
     if descriptions_text:
-        codemeta_output["description"] = descriptions_text
+        codemeta_output[constants.CAT_CODEMETA_DESCRIPTION] = descriptions_text
     # if published_date != "":
     # commenting this out because we cannot assume the last published date to be the published date
     #     codemeta_output["datePublished"] = published_date
@@ -497,28 +553,34 @@ def deduplicate_publications(publications: List[Dict]) -> List[Dict]:
     seen = {}
     for pub in publications:
         # doi = pub.get("identifier", "").lower().strip()
-        doi = (pub.get("identifier") or "").lower().strip()
+        # doi = (pub.get("identifier") or "").lower().strip()
+        doi = extract_doi(pub.get("identifier") or "")
         title = normalize_title(pub.get("name", ""))
         key = (doi, title)
-
+      
         if key not in seen:
             seen[key] = pub
         else:
             existing = seen[key]
-            # Extraemos valores relevantes
             existing_format = existing.get("_source_format", "")
             new_format = pub.get("_source_format", "")
             existing_url = (existing.get("url") or "").lower()
             new_url = (pub.get("url") or "").lower()
 
-            is_doi_url_existing = existing_url.startswith("https://doi.org/")
-            is_doi_url_new = new_url.startswith("https://doi.org/")
+            # is_doi_url_existing = existing_url.startswith("https://doi.org/")
+            # is_doi_url_new = new_url.startswith("https://doi.org/")
+            doi_existing = extract_doi(existing_url)
+            # print(f'-----> DOI existing: {doi_existing}')
+            doi_new = extract_doi(new_url)
+            # print(f'-----> DOI existing: {doi_new}')
+            is_doi_url_existing = bool(doi_existing)
+            is_doi_url_new = bool(doi_new)
 
             # Priority CFF
             if existing_format != "cff" and new_format == "cff":
                 seen[key] = pub
 
-            # Priority URL DOI
+            # Priority DOI URL
             elif existing_format == new_format:
                 if not is_doi_url_existing and is_doi_url_new:
                     seen[key] = pub
@@ -529,3 +591,11 @@ def deduplicate_publications(publications: List[Dict]) -> List[Dict]:
         result.append(pub)
 
     return result
+    
+
+def extract_doi(url: str) -> str:
+    if not url:
+        return ""
+
+    match = re.search(constants.REGEXP_ALL_DOIS, url, re.IGNORECASE)
+    return match.group(0).lower() if match else ""

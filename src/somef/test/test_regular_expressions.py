@@ -48,7 +48,7 @@ class TestRegExp(unittest.TestCase):
         with open(test_data_path + "test_extract_dois.txt", "r") as data_file:
             test_text = data_file.read()
             c = regular_expressions.extract_doi_badges(test_text, Result(), test_data_path + "test_extract_dois.txt")
-            assert len(c.results[constants.CAT_IDENTIFIER]) == 2
+            assert len(c.results[constants.CAT_IDENTIFIER]) == 3
 
     def test_extract_binder_links(self):
         """Test designed to check if binder links are detected"""
@@ -84,6 +84,17 @@ class TestRegExp(unittest.TestCase):
                                                   test_data_path + "test_extract_title_with_md.txt")
             res = c.results[constants.CAT_FULL_TITLE][0]
             assert "SOMEF" == res[constants.PROP_RESULT][constants.PROP_VALUE]
+
+    def test_extract_title_ignored_header(self):
+        """Test that a header like 'Overview' and headers are not returned as full title"""
+
+        with open(test_data_path + "README-EUVpy.md", "r") as data_file:
+            test_text = data_file.read()
+            c = regular_expressions.extract_title(test_text, Result(),
+                                                  test_data_path + "README-EUVpy.md")
+  
+            assert constants.CAT_FULL_TITLE not in c.results or len(c.results[constants.CAT_FULL_TITLE]) == 0
+
 
     def test_extract_readthedocs_1(self):
         """Test designed to check if readthedocs links are detected"""
@@ -212,7 +223,7 @@ class TestRegExp(unittest.TestCase):
             result = regular_expressions.extract_arxiv_links(test_text, Result(), test_data_path + "test_issue_181_2.txt")
             arxiv_url = result.results[constants.CAT_RELATED_PAPERS][0]['result']['value']
             expected_result = "https://arxiv.org/abs/2203.01044"
-            self.assertEquals(expected_result,arxiv_url)
+            self.assertEqual(expected_result,arxiv_url)
     def test_issue_181_3(self):
         """Test to test arxiv as embedded url, including same in bibtex"""
         with open(test_data_path + "test_issue_181_3.txt", "r") as data_file:
@@ -221,7 +232,7 @@ class TestRegExp(unittest.TestCase):
                                                              test_data_path + "test_issue_181_3.txt")
             arxiv_url = result.results[constants.CAT_RELATED_PAPERS][0]['result']['value']
             expected_result = "https://arxiv.org/abs/1907.11111"
-            self.assertEquals(expected_result, arxiv_url)
+            self.assertEqual(expected_result, arxiv_url)
 
     def test_issue_270(self):
         """Test designed to check if support channels are detected"""
@@ -389,7 +400,8 @@ The web UI works in recent desktop versions of Chrome, Firefox, Safari and Inter
             assert constants.CAT_FULL_TITLE not in c.results, "Category CAT_FULL_TITLE should be absent if there is no valid title."
 
     def test_issue_771(self):
-        """Test designed to check if can be extracted identifiers, package manager and documentation from badges in the readme"""
+        """Test designed to check whether identifiers, package manager and documentation can be extracted
+        from badges in the readme file """
         with open(test_data_path + "README-sunpy.rst", "r") as data_file:
             test_text = data_file.read()
             identifiers = regular_expressions.extract_doi_badges(test_text, Result(),
@@ -398,15 +410,15 @@ The web UI works in recent desktop versions of Chrome, Firefox, Safari and Inter
                                                   test_data_path + "README-sunpy.rst")
             package = regular_expressions.extract_package_distributions(test_text, Result(),
                                                   test_data_path + "README-sunpy.rst")
-            
-            expected_doi = "https://doi.org/10.5281/zenodo.15691296"
+
+            # cant provide concrete doi or test will fail every time there is an update and we resolve the id
+            expected_doi = "https://doi.org/10.5281/zenodo."
             doi_values = []
             if "identifier" in identifiers.results:
                 for result in identifiers.results["identifier"]:
                     if "result" in result and "value" in result["result"]:
                         doi_values.append(result["result"]["value"])
-
-                assert expected_doi in doi_values, f"Expected DOI {expected_doi} not found in identifiers"
+                assert expected_doi in doi_values[0], f"Expected DOI {expected_doi} not found in identifiers"
                 
             expected_doc_url = "https://docs.sunpy.org/"
             documentation_values = []

@@ -8,35 +8,43 @@ import validators
 from .utils import constants
 from .process_results import Result
 from urllib.parse import urlparse
+
 import bibtexparser
 
 def extract_title(unfiltered_text, repository_metadata: Result, readme_source) -> Result:
+    from .header_analysis import label_header 
     """
-    Regexp to extract title (first header) from a repository
-    Parameters
-    ----------
-    @param unfiltered_text: repo text
-    @param repository_metadata: Result with the extractions so far
-    @param readme_source: url to the file used (for provenance)
+        Regexp to extract title (first header) from a repository
+        Parameters
+        ----------
+        @param unfiltered_text: repo text
+        @param repository_metadata: Result with the extractions so far
+        @param readme_source: url to the file used (for provenance)
 
-    Returns
-    -------
-    @returns a Result including the title (if found)
-
+        Returns
+        -------
+        @returns a Result including the title (if found)
     """
+
     html_text = markdown.markdown(unfiltered_text)
     splitted = html_text.split("\n")
     index = 0
     limit = len(splitted)
     output = ""
     regex = r'<[^<>]+>'
+    
     while index < limit:
         line = splitted[index]
         if line.startswith("<h"):
             if line.startswith("<h1>"):
-                output = re.sub(regex, '', line)
+                title = re.sub(regex, '', line).strip()
+                header_labels = label_header(title.lower())
+                if not header_labels and title.lower() != "overview":
+                    output = title
             break
         index += 1
+
+   
 
     # If the output is empty or none, the category doesn't make sense and shouldn't be displayed in the final result
     if has_valid_output(output):
@@ -112,7 +120,8 @@ def extract_readthedocs(readme_text, repository_metadata: Result, readme_source)
             }
             try:
                 # if name of the repo is known then compare against the readthedocs one. Only add it if it's similar/same
-                name_in_link = re.findall('https://([^.]+)\.readthedocs\.io', link)
+                # name_in_link = re.findall('https://([^.]+)\.readthedocs\.io', link)
+                name_in_link = re.findall(r'https://([^.]+)\.readthedocs\.io', link)
                 name_in_link = name_in_link[0]
                 if name == "" or name_in_link.lower() == name.lower():
                     repository_metadata.add_result(constants.CAT_DOCUMENTATION, result, 1,
@@ -571,9 +580,15 @@ def extract_doi_badges(readme_text, repository_metadata: Result, source) -> Resu
     # The identifier is in position 1. Position 0 is the badge id, which we don't want to export
     if not doi_badges:
         match = re.search(constants.REGEXP_ZENODO_LATEST_DOI, readme_text)
+        badge_url = None
         if match:
             badge_url = match.group(1)
-            try:
+        else:
+            match = re.search(constants.REGEXP_ZENODO_DOI, readme_text)
+            if match:
+                badge_url = match.group(0)
+        try:
+            if badge_url is not None:
                 response = requests.get(badge_url, allow_redirects=True, timeout=10)
                 match = re.search(constants.REGEXP_ZENODO_JSON_LD,
                     response.text,
@@ -591,9 +606,8 @@ def extract_doi_badges(readme_text, repository_metadata: Result, source) -> Resu
                             }, 1, constants.TECHNIQUE_REGULAR_EXPRESSION, source)
                     except json.JSONDecodeError:
                         logging.warning("Error parsing Zenodo JSON-LD")
-            except requests.RequestException as e:
-                logging.warning(f"Error fetching DOI from Zenodo badge: {e}")
-
+        except requests.RequestException as e:
+            logging.warning(f"Error fetching DOI from Zenodo badge: {e}")
     else:
 
         for doi in doi_badges:
