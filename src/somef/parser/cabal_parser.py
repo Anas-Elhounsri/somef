@@ -61,8 +61,18 @@ def parse_cabal_file(file_path, metadata_result: Result, source):
                         source
                     )
 
-                description_match = re.search(r'description:\s*(.*)', content, re.IGNORECASE)
+
+                # description_match = re.search(r'description:\s*(.*)', content, re.IGNORECASE)
+                cleaned_content = content.replace('\r\n', '\n').replace('\r', '\n')
+                description_regex = re.compile(
+                    r'description:\s*(.*?)(?=\n\S|\Z)', 
+                    re.IGNORECASE | re.DOTALL
+                )
+                
+                description_match = description_regex.search(cleaned_content)
+                synopsis_match = re.search(r'synopsis:\s*(.*)', content, re.IGNORECASE)
                 if description_match:
+                         
                     metadata_result.add_result(
                         constants.CAT_DESCRIPTION,
                         {
@@ -73,6 +83,17 @@ def parse_cabal_file(file_path, metadata_result: Result, source):
                         constants.TECHNIQUE_CODE_CONFIG_PARSER,
                         source
                     )
+                    if synopsis_match:
+                        metadata_result.add_result(
+                            constants.CAT_DESCRIPTION,
+                            {
+                                "value": synopsis_match.group(1),
+                                "type": constants.STRING
+                            },
+                            1,
+                            constants.TECHNIQUE_CODE_CONFIG_PARSER,
+                            source
+                        )
                 
                 homepage_match = re.search(r'homepage:\s*(.*)', content, re.IGNORECASE)
                 if homepage_match:
@@ -81,6 +102,32 @@ def parse_cabal_file(file_path, metadata_result: Result, source):
                         {
                             "value": homepage_match.group(1),
                             "type": constants.URL
+                        },
+                        1,
+                        constants.TECHNIQUE_CODE_CONFIG_PARSER,
+                        source
+                    )
+
+                stability_match = re.search(r'stability:\s*(.*)', content, re.IGNORECASE)
+                if stability_match:
+                    metadata_result.add_result(
+                        constants.CAT_DEV_STATUS,  
+                        {
+                            "value": stability_match.group(1),
+                            "type": constants.STRING   
+                        },
+                        1,
+                        constants.TECHNIQUE_CODE_CONFIG_PARSER,
+                        source
+                    )
+
+                bug_reports_match = re.search(r'bug-reports:\s*(.*)', content, re.IGNORECASE)
+                if bug_reports_match:
+                    metadata_result.add_result(
+                        constants.CAT_ISSUE_TRACKER, 
+                        {
+                            "value": bug_reports_match.group(1),
+                            "type": constants.URL  
                         },
                         1,
                         constants.TECHNIQUE_CODE_CONFIG_PARSER,
@@ -132,7 +179,12 @@ def parse_cabal_file(file_path, metadata_result: Result, source):
                 if library_section_match:
                     library_content = library_section_match.group(1)
                     
-                    build_depends_match = re.search(r'build-depends:\s*(.*?)(?=\n\s*\w+:|\Z)', library_content, re.DOTALL)
+                    build_depends_match = re.search(
+                        r'build-depends:\s*(.*?)(?=\n\s*(?:[A-Za-z0-9_-]+\s*:|if\s|\Z))',
+                        library_content,
+                        re.DOTALL
+                    )
+                    # build_depends_match = re.search(r'build-depends:\s*(.*?)(?=\n\s*\w+:|\Z)', library_content, re.DOTALL)
                     if build_depends_match:
                         build_depends_content = build_depends_match.group(1)
                         

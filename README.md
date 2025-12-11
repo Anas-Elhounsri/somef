@@ -159,7 +159,7 @@ This option is recommended over installing Poetry with pip install.
 
 Now Poetry will handle the installation of SOMEF and all its dependencies configured in the `toml` file.
 
-To test the correct installation of poetry run:
+To test the correct installation of poetry run (poetry version `> 2.0.0`):
 
 ```
 poetry --version
@@ -172,15 +172,11 @@ cd /somef
 poetry install
 ```
 
-Now we need to access our virtual environment, to do so you have to install the [poetry plugin shell](https://github.com/python-poetry/poetry-plugin-shell) and run the following command:
+Now we need to access our virtual environment, to do so you can run the following command:
+```
+poetry env activate
+To learn more about poetry environment management, visit their official documentation [here](https://python-poetry.org/docs/managing-environments/).
 
-```
-pip install poetry-plugin-shell
-```
-After `shell` is set up, you can run the following comand to access the virtual environment
-```
-poetry shell
-```
 Test SOMEF installation
 
 ```bash
@@ -345,3 +341,13 @@ To see upcoming features, please have a look at our [open issues](https://github
 ## Extending SOMEF categories:
 
 To run a classifier with an additional category or remove an existing one, a corresponding path entry in the config.json should be provided and the category type should be added/removed in the category variable in `cli.py`.
+
+## Metadata Support
+
+SOMEF supports the extraction and analysis of metadata in package files of several programming languages.  Current support includes: `setup.py` and `pyproject.toml` for Python, `pom.xml` for Java, `.gemspec` for Ruby, `DESCRIPTION` for R, `bower.json` for JavaScript, HTML or CSS, `.cabal` for Haskell, `cargo.toml` for RUST, `composer` for PHP, `.juliaProject.toml` for Julia , `AUTHORS`, `codemeta.json`, and `citation.cff`
+This includes identifying dependencies, runtime requirements, and development tools specified in project configuration files.  
+
+## Limitations
+
+SOMEF is designed to work primarily with repositories written in English.  
+Repositories in other languages may not be processed as effectively, and results could be incomplete or less accurate.
